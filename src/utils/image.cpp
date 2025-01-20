@@ -18,15 +18,18 @@
 #include <Poco/Process.h>
 #include <Poco/SHA2Engine.h>
 #include <Poco/StreamCopier.h>
+#include <Poco/StringTokenizer.h>
 
 #include "utils/image.hpp"
 
 namespace fs = std::filesystem;
 
 namespace {
+
 const std::unordered_map<std::string, std::regex> cAnchoredEncodedRegexps
     = {{"sha256", std::regex(R"(^[a-f0-9]{64}$)")}, {"sha384", std::regex(R"(^[a-f0-9]{96}$)")},
         {"sha512", std::regex(R"(^[a-f0-9]{128}$)")}};
+
 } // namespace
 
 namespace aos::common::utils {
@@ -107,6 +110,55 @@ Error UnpackTarImage(const std::string& archivePath, const std::string& destinat
     return ErrorEnum::eNone;
 }
 
+RetWithError<uint64_t> GetUnpackedArchiveSize(const std::string& archivePath, bool isTarGz)
+{
+    constexpr auto cFilePermissionStrLen     = 10;
+    constexpr auto cFilePermissionTokenIndex = 0;
+    constexpr auto cFileSizeTokenIndex       = 2;
+
+    if (!fs::exists(archivePath)) {
+        return {0, ErrorEnum::eNotFound};
+    }
+
+    Poco::Process::Args args;
+    args.push_back(isTarGz ? "-tzvf" : "-tvf");
+    args.push_back(archivePath);
+
+    Poco::Pipe          outPipe;
+    Poco::ProcessHandle ph = Poco::Process::launch("tar", args, nullptr, &outPipe, &outPipe);
+
+    Poco::PipeInputStream istr(outPipe);
+
+    uint64_t size = 0;
+
+    try {
+        std::string line;
+
+        while (std::getline(istr, line)) {
+            Poco::StringTokenizer tokenizer(
+                line, " ", Poco::StringTokenizer::TOK_IGNORE_EMPTY | Poco::StringTokenizer::TOK_TRIM);
+
+            if (tokenizer.count() <= cFileSizeTokenIndex
+                || tokenizer[cFilePermissionTokenIndex].length() != cFilePermissionStrLen) {
+                continue;
+            }
+
+            size += std::stoull(tokenizer[cFileSizeTokenIndex]);
+        }
+    } catch (const std::exception& e) {
+        return {0, Error(ErrorEnum::eFailed, e.what())};
+    }
+
+    if (int rc = ph.wait(); rc != 0) {
+        std::string output;
+        Poco::StreamCopier::copyToString(istr, output);
+
+        return {0, Error(ErrorEnum::eFailed, output.c_str())};
+    }
+
+    return size;
+}
+
 Error ValidateDigest(const Digest& digest)
 {
     auto [algorithm, hex] = ParseDigest(digest);
@@ -129,6 +181,7 @@ Error ValidateDigest(const Digest& digest)
 RetWithError<std::string> HashDir(const std::string& dir)
 {
     std::vector<std::string> files = CollectFiles(dir);
+    std::sort(files.begin(), files.end(), [](const std::string& a, const std::string& b) { return a < b; });
 
     Poco::SHA2Engine h;
     for (const auto& file : files) {

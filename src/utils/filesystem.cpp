@@ -8,7 +8,9 @@
 #include <cerrno>
 #include <cstdlib>
 #include <filesystem>
+#include <numeric>
 #include <string>
+#include <unistd.h>
 #include <vector>
 
 #include <Poco/UUID.h>
@@ -45,6 +47,44 @@ RetWithError<std::string> MkTmpDir(const std::string& dir, const std::string& pa
     }
 
     return {std::string(result), ErrorEnum::eNone};
+}
+
+RetWithError<uintmax_t> CalculateSize(const std::string& path)
+{
+    if (fs::is_regular_file(path)) {
+        return fs::file_size(path);
+    }
+
+    if (fs::is_directory(path)) {
+        return std::accumulate(fs::recursive_directory_iterator(path), fs::recursive_directory_iterator(), 0,
+            [](uintmax_t total, const auto& entry) {
+                return (fs::is_regular_file(entry)) ? (total + fs::file_size(entry)) : total;
+            });
+    }
+
+    return {0, ErrorEnum::eNotSupported};
+}
+
+Error ChangeOwner(const std::string& path, uint32_t newUID, uint32_t newGID)
+{
+    try {
+        for (const auto& entry : fs::recursive_directory_iterator(path)) {
+            const std::string file_path = entry.path().string();
+
+            if (auto res = chown(file_path.c_str(), newUID, newGID); res == -1) {
+                return Error(ErrorEnum::eFailed, strerror(errno));
+            }
+        }
+
+        if (auto res = chown(path.c_str(), newUID, newGID); res == -1) {
+            return Error(ErrorEnum::eFailed, strerror(errno));
+        }
+
+    } catch (const std::exception& ex) {
+        return Error(ErrorEnum::eFailed, ex.what());
+    }
+
+    return ErrorEnum::eNone;
 }
 
 } // namespace aos::common::utils

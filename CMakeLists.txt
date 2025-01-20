@@ -33,6 +33,7 @@ message(STATUS)
 
 # aos core api options
 set(WITH_IAM_API ON)
+set(WITH_SM_API ON)
 
 # ######################################################################################################################
 # Compiler flags
@@ -86,6 +87,7 @@ add_subdirectory(src)
 if(WITH_TEST)
     add_subdirectory(tests)
     add_subdirectory(external/aos_core_lib_cpp/tests/utils)
+    add_subdirectory(external/aos_core_lib_cpp/tests/include)
 endif()
 
 # ######################################################################################################################

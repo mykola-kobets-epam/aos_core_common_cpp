@@ -19,6 +19,7 @@ set(SOURCES
     json.cpp
     parser.cpp
     pkcs11helper.cpp
+    retry.cpp
     time.cpp
 )
 
@@ -40,7 +41,7 @@ find_package(gRPC REQUIRED)
 
 target_link_libraries(
     ${TARGET}
-    PUBLIC aoscommon Poco::Foundation gRPC::grpc++
+    PUBLIC aoscommon Poco::Foundation gRPC::grpc++ aoscoreapi-gen-iam
     PRIVATE Poco::JSON
 )
 

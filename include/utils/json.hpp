@@ -8,18 +8,17 @@
 #ifndef UTILS_JSON_HPP_
 #define UTILS_JSON_HPP_
 
-#include <algorithm>
 #include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 #include <Poco/Dynamic/Var.h>
-#include <Poco/JSON/JSONException.h>
 #include <Poco/JSON/Object.h>
-#include <Poco/JSON/Parser.h>
 
+#include <aos/common/tools/array.hpp>
 #include <aos/common/tools/error.hpp>
+#include <aos/common/tools/string.hpp>
 
 namespace aos::common::utils {
 /**
@@ -190,6 +189,33 @@ std::vector<T> GetArrayValue(const CaseInsensitiveObjectWrapper& object, const s
 {
     return GetArrayValue<T>(object, key, [](const Poco::Dynamic::Var& value) { return value.convert<T>(); });
 }
+
+/**
+ * Converts data from container into json array.
+ *
+ * @param container container.
+ * @param converterFunc function to convert array elements.
+ * @return Poco::JSON::Array.
+ */
+template <class Container, class ConverterFunc>
+Poco::JSON::Array ToJsonArray(const Container& container, ConverterFunc converterFunc)
+{
+    Poco::JSON::Array jsonArr;
+
+    for (const auto& elem : container) {
+        jsonArr.add(converterFunc(elem));
+    }
+
+    return jsonArr;
+}
+
+/**
+ * Stringifies json.
+ *
+ * @param json json object.
+ * @return std::string.
+ */
+std::string Stringify(const Poco::Dynamic::Var& json);
 
 } // namespace aos::common::utils
 
