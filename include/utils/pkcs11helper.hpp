@@ -15,12 +15,12 @@
 namespace aos::common::utils {
 
 /**
- * Creates PKCS11 URL from the key URL.
+ * Creates PKCS11 private key URL.
  *
  * @param keyURL key URL.
  * @return RetWithError<std::string> PKCS11 URL.
  */
-RetWithError<std::string> CreatePKCS11URL(const String& keyURL);
+RetWithError<std::string> CreatePKCS11PrivKeyURL(const String& keyURL);
 
 } // namespace aos::common::utils
 

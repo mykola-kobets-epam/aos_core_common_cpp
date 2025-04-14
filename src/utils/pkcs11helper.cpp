@@ -17,9 +17,9 @@ namespace aos::common::utils {
  * Statics
  **********************************************************************************************************************/
 
-// LibP11 has its limitations on RFC7512 urls:
+// Creates RFC7512 URL adapted for PKCS11 provider:
 // https://www.rfc-editor.org/rfc/rfc7512.html
-static std::string CreateLibP11PKCS11URL(const String& url)
+static std::string CreatePKCS11ProviderPrivKeyURL(const String& url)
 {
     std::string result;
 
@@ -30,10 +30,15 @@ static std::string CreateLibP11PKCS11URL(const String& url)
 
         result = std::regex_replace(url.CStr(), objLabelRegex, "");
 
-        // libp11 doesn't process module-path
+        // pkcs11-provider doesn't process module-path
         std::regex modulePathRegex {"module\\-path=[^&?;]*[&?;]?"};
 
         result = std::regex_replace(result, modulePathRegex, "");
+
+        // pkcs11-provider tools/uri2pem.py requires type=private, make url compatible with it.
+        std::regex pkcs11PrefixRegex {"^pkcs11:"};
+
+        result = std::regex_replace(result, pkcs11PrefixRegex, "pkcs11:type=private;");
     } catch (const std::exception& e) {
         AOS_ERROR_THROW(e.what(), aos::ErrorEnum::eFailed);
     }
@@ -45,10 +50,10 @@ static std::string CreateLibP11PKCS11URL(const String& url)
  * Public functions
  **********************************************************************************************************************/
 
-RetWithError<std::string> CreatePKCS11URL(const String& keyURL)
+RetWithError<std::string> CreatePKCS11PrivKeyURL(const String& keyURL)
 {
     try {
-        return {CreateLibP11PKCS11URL(keyURL), ErrorEnum::eNone};
+        return {CreatePKCS11ProviderPrivKeyURL(keyURL), ErrorEnum::eNone};
     } catch (const std::exception& e) {
         return {"", AOS_ERROR_WRAP(utils::ToAosError(e))};
     }

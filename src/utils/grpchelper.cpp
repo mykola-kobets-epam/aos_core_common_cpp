@@ -15,18 +15,51 @@
 #include "utils/grpchelper.hpp"
 #include "utils/pkcs11helper.hpp"
 
+#include "pk11uri/pk11_uri.h"
+
 using namespace aos;
 
 /***********************************************************************************************************************
  * Statics
  **********************************************************************************************************************/
 
-static std::string CreateGRPCPKCS11URL(const String& keyURL)
+static std::string PEMEncodePKCS11URI(const std::string& uri)
 {
-    auto [libP11URL, err] = aos::common::utils::CreatePKCS11URL(keyURL);
+    using P11UriPtr = std::unique_ptr<P11PROV_PK11_URI, decltype(&P11PROV_PK11_URI_free)>;
+    using BioPtr = std::unique_ptr<BIO, decltype(&BIO_free)>;
+
+    auto pk11uri = P11UriPtr(P11PROV_PK11_URI_new(), &P11PROV_PK11_URI_free);
+
+    if (!ASN1_STRING_set(pk11uri->desc, P11PROV_DESCS_URI_FILE,
+                         sizeof(P11PROV_DESCS_URI_FILE) - 1)) {
+        AOS_ERROR_THROW("ASN1_STRING_set failed", ErrorEnum::eFailed);
+    }
+
+    if (!ASN1_STRING_set(pk11uri->uri, uri.c_str(), uri.length())) {
+        AOS_ERROR_THROW("ASN1_STRING_set failed", ErrorEnum::eFailed);
+    }
+
+    auto bio = BioPtr(BIO_new(BIO_s_mem()), &BIO_free);
+    if (bio == nullptr) {
+        AOS_ERROR_THROW("Failed to create BIO", ErrorEnum::eFailed);
+    }
+
+    if (PEM_write_bio_P11PROV_PK11_URI(bio.get(), pk11uri.get()) != 1) {
+        AOS_ERROR_THROW("Failed to write BIO PEM", ErrorEnum::eFailed);
+    }
+
+    char* data = nullptr;
+    long len = BIO_get_mem_data(bio.get(), &data);
+
+    return {data, static_cast<size_t>(len)};
+}
+
+static std::string CreateGRPCPKCS11PrivKeyURL(const String& keyURL)
+{
+    auto [libP11URL, err] = aos::common::utils::CreatePKCS11PrivKeyURL(keyURL);
     AOS_ERROR_CHECK_AND_THROW("failed to create PKCS11 URL", err);
 
-    return "engine:pkcs11:" + libP11URL;
+    return PEMEncodePKCS11URI(libP11URL);
 }
 
 static std::shared_ptr<grpc::experimental::CertificateProviderInterface> GetMTLSCertificates(
@@ -39,7 +72,9 @@ static std::shared_ptr<grpc::experimental::CertificateProviderInterface> GetMTLS
     std::ifstream file {rootCertPath.CStr()};
     std::string   rootCert((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 
-    auto keyCertPair = grpc::experimental::IdentityKeyCertPair {CreateGRPCPKCS11URL(certInfo.mKeyURL), certificates};
+
+    
+    auto keyCertPair = grpc::experimental::IdentityKeyCertPair {CreateGRPCPKCS11PrivKeyURL(certInfo.mKeyURL), certificates};
 
     std::vector<grpc::experimental::IdentityKeyCertPair> keyCertPairs = {keyCertPair};
 
@@ -53,7 +88,7 @@ static std::shared_ptr<grpc::experimental::CertificateProviderInterface> GetTLSS
     auto [certificates, err] = aos::common::utils::LoadPEMCertificates(certInfo.mCertURL, certLoader, cryptoProvider);
     AOS_ERROR_CHECK_AND_THROW("Load certificate by URL failed", err);
 
-    auto keyCertPair = grpc::experimental::IdentityKeyCertPair {CreateGRPCPKCS11URL(certInfo.mKeyURL), certificates};
+    auto keyCertPair = grpc::experimental::IdentityKeyCertPair {CreateGRPCPKCS11PrivKeyURL(certInfo.mKeyURL), certificates};
 
     std::vector<grpc::experimental::IdentityKeyCertPair> keyCertPairs = {keyCertPair};
 
