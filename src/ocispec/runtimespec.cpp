@@ -1030,6 +1030,11 @@ Error OCISpec::SaveRuntimeSpec(const String& path, const aos::oci::RuntimeSpec& 
             object->set("vm", VMToJSON(runtimeSpec.mVM.GetValue()));
         }
 
+        Poco::JSON::Object::Ptr annotations = new Poco::JSON::Object(Poco::JSON_PRESERVE_KEY_ORDER);
+        annotations->set("run.oci.systemd.subgroup", "crun");
+
+        object->set("annotations", annotations);
+
         auto err = utils::WriteJsonToFile(object, path.CStr());
         AOS_ERROR_CHECK_AND_THROW(err, "failed to write json to file");
     } catch (const std::exception& e) {
